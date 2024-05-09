@@ -1,6 +1,7 @@
 from openai import OpenAI, AssistantEventHandler
 from typing_extensions import override
 import os
+import sys
 
 client = OpenAI()
 
@@ -28,12 +29,15 @@ print("\nThread ID: " + thread.id)
 #instead of forcefully using my assistant instance
 asstID = os.getenv("OPENAI_ASSISTANT_ID")
 
-#test message
-message = client.beta.threads.messages.create(
+#adds a message to the thread but does not execute the run
+#(executing a run sends the whole thread to the assistant and returns output)
+def addMessage(msg):
+   message = client.beta.threads.messages.create(
     thread_id=thread.id,
     role="user",
-    content="what is the exact value of e^4 to 5 decimal places"
-)
+    content=msg
+  )
+   
 
 #default EventHandler override from OAI Assistants docs
 class EventHandler(AssistantEventHandler):    
@@ -58,12 +62,28 @@ class EventHandler(AssistantEventHandler):
           if output.type == "logs":
             print(f"\n{output.logs}", flush=True)
 
-with client.beta.threads.runs.stream(
-  thread_id=thread.id,
-  assistant_id=asstID,
-  event_handler=EventHandler(),
-) as stream:
-  stream.until_done()
-  print('\n')
+
+#sends the thread in its current state to the LLM
+#and prints/streams the response neatly in real time
+def executeRun():
+  with client.beta.threads.runs.stream(
+    thread_id=thread.id,
+    assistant_id=asstID,
+    event_handler=EventHandler(),
+  ) as stream:
+    stream.until_done()
+    print('\n')
+
+#if no cmd line arguments are passed in, infinite loop getting input from the user
+#and evaluating it
+if len(sys.argv) == 1:
+   while True:
+      addMessage(input("\nask away: "))
+      executeRun()
+#also accepts a singular string argument that gets evaluated by the LLM
+#and then exits
+else:
+  addMessage(sys.argv[1])
+  executeRun()
 
 
