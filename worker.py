@@ -21,7 +21,7 @@ else:
     with open(session_file) as f:
         session_id = f.read().strip()
     thread = client.beta.threads.retrieve(thread_id=session_id)
-    
+
 
 print("\nThread ID: " + thread.id)
 
@@ -37,30 +37,30 @@ def addMessage(msg):
     role="user",
     content=msg
   )
-   
+
 
 #default EventHandler override from OAI Assistants docs
-class EventHandler(AssistantEventHandler):    
+class EventHandler(AssistantEventHandler):
   @override
   def on_text_created(self, text) -> None:
     print(f"\nassistant > ", end="", flush=True)
-      
+
   @override
   def on_text_delta(self, delta, snapshot):
     print(delta.value, end="", flush=True)
-      
+
   def on_tool_call_created(self, tool_call):
     print(f"\nassistant > {tool_call.type}\n", flush=True)
-  
+
   def on_tool_call_delta(self, delta, snapshot):
     if delta.type == 'code_interpreter':
-      if delta.code_interpreter.input:
-        print(delta.code_interpreter.input, end="", flush=True)
-      if delta.code_interpreter.outputs:
-        print(f"\n\noutput >", flush=True)
-        for output in delta.code_interpreter.outputs:
-          if output.type == "logs":
-            print(f"\n{output.logs}", flush=True)
+        if delta.code_interpreter.input:
+            print("\033[94m" + delta.code_interpreter.input, end="", flush=True)
+        if delta.code_interpreter.outputs:
+            print(f"\033[0m\n\noutput >", flush=True)
+            for output in delta.code_interpreter.outputs:
+                if output.type == "logs":
+                    print(f"\n{output.logs}", flush=True)
 
 
 #sends the thread in its current state to the LLM
@@ -68,7 +68,7 @@ class EventHandler(AssistantEventHandler):
 def executeRun():
   with client.beta.threads.runs.stream(
     thread_id=thread.id,
-    assistant_id=asstID,
+    assistant_id=os.getenv("OPENAI_ASSISTANT_KEY"),
     event_handler=EventHandler(),
   ) as stream:
     stream.until_done()
@@ -85,5 +85,3 @@ if len(sys.argv) == 1:
 else:
   addMessage(sys.argv[1])
   executeRun()
-
-
