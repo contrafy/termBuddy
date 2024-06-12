@@ -40,25 +40,61 @@ def addMessage(msg):
 
 #default EventHandler override from OAI Assistants docs
 class EventHandler(AssistantEventHandler):
+    def __init__(self):
+        super().__init__()
+        self.codeBlock = False
+        self.buffer = ""
+        self.terminalWidth = os.get_terminal_size().columns
+
     @override
     def on_text_created(self, text) -> None:
         print(f"\nassistant > ", end="", flush=True)
 
     @override
-    def on_text_delta(self, delta, snapshot):
-        #handling markdown like this for now, sets the color of terminal to a neon color
-        #for headers, actual printing is all done in the final 'else' branch
-        if('##' in delta.value):
-            print(f"\033[95m", end="", flush=True)
-        elif('#' in delta.value):
-            print(f"\033[96m", end="", flush=True)
+    def on_text_done(self, text):
+        print(self.buffer, end="", flush=True)
+        print(f"\033[0m", end="", flush=True)
 
-        #resets the terminal text color to default
-        #might as well do it on every newline
-        elif('\n' in delta.value):
-            print(f"\033[0m", flush=True)
+    def processBuffer(self):
+        #handle code blocks
+        if('`' in self.buffer):
+            if('``' in self.buffer):
+                if('```' in self.buffer):
+                    self.codeBlock = not self.codeBlock
+                    if self.codeBlock:
+                        print(f"\n\033[92m", end="", flush=True)
+                        self.buffer = ""
+                        print('-' * self.terminalWidth, flush=True)
+                    else:
+                        print('-' * self.terminalWidth, flush=True)
+                        self.buffer = ""
+                        print(f"\033[0m", end="", flush=True)                
+
+        #handle markdown headers
+        elif('###' in self.buffer and not self.codeBlock):
+            print(f"\n\n\033[94m", end="", flush=True)
+            self.buffer = ""
+        elif('##' in self.buffer and not self.codeBlock):
+            print(f"\n\n\033[95m", end="", flush=True)
+            self.buffer = ""
+        elif('#' in self.buffer and not self.codeBlock):
+            print(f"\n\n\033[96m", end="", flush=True)
+            self.buffer = ""
+
+        #reset terminal color to default
+        elif('\n' in self.buffer and not self.codeBlock):
+            print(f"\033[0m" + self.buffer, end="", flush=True)
+            self.buffer = ""
+
+        #handle split deltas and all other text
         else:
-            print(delta.value, end="", flush=True)
+            print(self.buffer, end="", flush=True)
+            self.buffer = ""
+    
+    @override
+    def on_text_delta(self, delta, snapshot):
+        self.buffer += delta.value
+        self.processBuffer()
 
     def on_tool_call_created(self, tool_call):
         print(f"\nassistant > {tool_call.type}\n", flush=True)
