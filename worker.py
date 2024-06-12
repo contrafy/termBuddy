@@ -38,37 +38,60 @@ def addMessage(msg):
   )
 
 
-#default EventHandler override from OAI Assistants docs
+#OpenAI Streaming SDK to handle model output in real time
 class EventHandler(AssistantEventHandler):
     def __init__(self):
         super().__init__()
         self.codeBlock = False
+
+        #use this buffer to detect markdown since delimiters can be
+        #split between deltas
         self.buffer = ""
+
+        #for the pretty lines
         self.terminalWidth = os.get_terminal_size().columns
 
     @override
     def on_text_created(self, text) -> None:
         print(f"\nassistant > ", end="", flush=True)
 
+    #just a final check to make sure everything gets output
     @override
     def on_text_done(self, text):
         print(self.buffer, end="", flush=True)
         print(f"\033[0m", end="", flush=True)
 
     def processBuffer(self):
-        #handle code blocks
+        #handle code blocks and bold markdown.... fuck bold markdown
         if('`' in self.buffer):
-            if('``' in self.buffer):
-                if('```' in self.buffer):
-                    self.codeBlock = not self.codeBlock
-                    if self.codeBlock:
-                        print(f"\n\033[92m", end="", flush=True)
-                        self.buffer = ""
-                        print('-' * self.terminalWidth, flush=True)
-                    else:
-                        print('-' * self.terminalWidth, flush=True)
-                        self.buffer = ""
-                        print(f"\033[0m", end="", flush=True)                
+            #detected a code block delimiter
+            if('```' in self.buffer):
+                #toggle the codeBlock boolean and use that to disable
+                #other formatting for the time being
+                self.codeBlock = not self.codeBlock
+                
+                #if this is the beginning of a code block, change the text color
+                #and print a pretty line
+                if self.codeBlock:
+                    print(f"\n\033[92m", end="", flush=True)
+                    self.buffer = ""
+                    print('-' * self.terminalWidth, flush=True)
+                #if its the end of one print another pretty line and reset the terminal color
+                else:
+                    print('-' * self.terminalWidth, flush=True)
+                    self.buffer = ""
+                    print(f"\033[0m", end="", flush=True)                
+
+            #handles `bold` markdown elements
+            elif(self.buffer.count('`') == 2
+                 and '``' not in self.buffer):
+                #replace the opening delimeter with the color code
+                self.buffer = self.buffer.replace('`', f"\033[93m", 1)
+                #replace the closing delimeter with the reset code
+                self.buffer = self.buffer.replace('`', f"\033[0m")
+
+                print(self.buffer, end="", flush=True)
+                self.buffer = ""
 
         #handle markdown headers
         elif('###' in self.buffer and not self.codeBlock):
@@ -81,15 +104,15 @@ class EventHandler(AssistantEventHandler):
             print(f"\n\n\033[96m", end="", flush=True)
             self.buffer = ""
 
-        #reset terminal color to default
+        #reset terminal color to default after rendering a markdown header   
         elif('\n' in self.buffer and not self.codeBlock):
             print(f"\033[0m" + self.buffer, end="", flush=True)
             self.buffer = ""
-
-        #handle split deltas and all other text
+        
+        #handle all normal text
         else:
             print(self.buffer, end="", flush=True)
-            self.buffer = ""
+            self.buffer = "" 
     
     @override
     def on_text_delta(self, delta, snapshot):
