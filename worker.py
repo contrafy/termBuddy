@@ -54,7 +54,7 @@ class EventHandler(AssistantEventHandler):
 
     @override
     def on_text_created(self, text) -> None:
-        print(f"\nassistant > ", end="", flush=True)
+        print(f"\n\033[0massistant > ", end="", flush=True)
 
     #just a final check to make sure everything gets output
     @override
@@ -72,11 +72,13 @@ class EventHandler(AssistantEventHandler):
                 self.codeBlock = not self.codeBlock
                 
                 #if this is the beginning of a code block, change the text color
-                #and print a pretty line
+                #but wait until the newline to print the pretty line
                 if self.codeBlock:
                     print(f"\n\033[92m", end="", flush=True)
                     self.buffer = ""
+
                     self.codeBlockEncountered = True
+
                 #if its the end of one print another pretty line and reset the terminal color
                 else:
                     print('-' * self.terminalWidth, flush=True)
@@ -105,11 +107,13 @@ class EventHandler(AssistantEventHandler):
             print(f"\n\n\033[96m", end="", flush=True)
             self.buffer = ""
 
-        #reset terminal color to default after rendering a markdown header   
+        #reset terminal color to default   
         elif('\n' in self.buffer and not self.codeBlock):
             print(f"\033[0m" + self.buffer, end="", flush=True)
             self.buffer = ""
-        
+
+        #this is solely to make sure the language of the code block is
+        #printed above the code block instead of inside it, in the same color 
         elif('\n' in self.buffer and self.codeBlockEncountered):
             print(self.buffer + ('-' * self.terminalWidth), flush=True)
             self.codeBlockEncountered = False
@@ -119,14 +123,16 @@ class EventHandler(AssistantEventHandler):
         else:
             print(self.buffer, end="", flush=True)
             self.buffer = "" 
-    
+
+    #as response text is received, add to buffer and processBuffer() will
+    #handle formatting accordingly 
     @override
     def on_text_delta(self, delta, snapshot):
         self.buffer += delta.value
         self.processBuffer()
 
     def on_tool_call_created(self, tool_call):
-        print(f"\nassistant > {tool_call.type}\n", flush=True)
+        print(f"\n\n\033[94m{tool_call.type}\n", flush=True)
 
     def on_tool_call_delta(self, delta, snapshot):
         if delta.type == 'code_interpreter':
