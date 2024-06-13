@@ -1,6 +1,6 @@
 # termBuddy
 
-This was made purely for my own use but in case you ever wanted a quick "ChatGPT" session in your shell here it is
+GPT wrappers in bash are fun and ChatGPT no longer tickles my wickle
 
 `OPENAI_API_KEY` and `OPENAI_ASSISTANT_KEY` env variables must be set before using this
 
