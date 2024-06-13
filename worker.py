@@ -43,6 +43,7 @@ class EventHandler(AssistantEventHandler):
     def __init__(self):
         super().__init__()
         self.codeBlock = False
+        self.codeBlockEncountered = False
 
         #use this buffer to detect markdown since delimiters can be
         #split between deltas
@@ -75,12 +76,12 @@ class EventHandler(AssistantEventHandler):
                 if self.codeBlock:
                     print(f"\n\033[92m", end="", flush=True)
                     self.buffer = ""
-                    print('-' * self.terminalWidth, flush=True)
+                    self.codeBlockEncountered = True
                 #if its the end of one print another pretty line and reset the terminal color
                 else:
                     print('-' * self.terminalWidth, flush=True)
                     self.buffer = ""
-                    print(f"\033[0m", end="", flush=True)                
+                    print(f"\033[0m", flush=True)                
 
             #handles `bold` markdown elements
             elif(self.buffer.count('`') == 2
@@ -107,6 +108,11 @@ class EventHandler(AssistantEventHandler):
         #reset terminal color to default after rendering a markdown header   
         elif('\n' in self.buffer and not self.codeBlock):
             print(f"\033[0m" + self.buffer, end="", flush=True)
+            self.buffer = ""
+        
+        elif('\n' in self.buffer and self.codeBlockEncountered):
+            print(self.buffer + ('-' * self.terminalWidth), flush=True)
+            self.codeBlockEncountered = False
             self.buffer = ""
         
         #handle all normal text
