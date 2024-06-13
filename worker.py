@@ -7,7 +7,6 @@ client = OpenAI()
 
 #file to hold the threadID of the current machines thread
 session_file = os.path.expanduser('~/.codeHelperSession')
-
 #if no thread exists for this machine, create it and add the threadID to a file
 #so that it can be retrieved in future sessions
 if not os.path.exists(session_file):
@@ -39,29 +38,126 @@ def addMessage(msg):
   )
 
 
-#default EventHandler override from OAI Assistants docs
+#OpenAI Streaming SDK to handle model output in real time
 class EventHandler(AssistantEventHandler):
-  @override
-  def on_text_created(self, text) -> None:
-    print(f"\nassistant > ", end="", flush=True)
+    def __init__(self):
+        super().__init__()
+        self.codeBlock = False
+        self.codeBlockEncountered = False
 
-  @override
-  def on_text_delta(self, delta, snapshot):
-    print(delta.value, end="", flush=True)
+        #use this buffer to detect markdown since delimiters can be
+        #split between deltas
+        self.buffer = ""
 
-  def on_tool_call_created(self, tool_call):
-    print(f"\nassistant > {tool_call.type}\n", flush=True)
+        #for the pretty lines
+        self.terminalWidth = os.get_terminal_size().columns
 
-  def on_tool_call_delta(self, delta, snapshot):
-    if delta.type == 'code_interpreter':
-        if delta.code_interpreter.input:
-            print("\033[94m" + delta.code_interpreter.input, end="", flush=True)
-        if delta.code_interpreter.outputs:
-            print(f"\033[0m\n\noutput >", flush=True)
-            for output in delta.code_interpreter.outputs:
-                if output.type == "logs":
-                    print(f"\n{output.logs}", flush=True)
+    @override
+    def on_text_created(self, text) -> None:
+        print(f"\nassistant > ", end="", flush=True)
 
+    #just a final check to make sure everything gets output
+    @override
+    def on_text_done(self, text):
+        print(self.buffer, end="", flush=True)
+        print(f"\033[0m", end="", flush=True)
+
+    def processBuffer(self):
+        #handle code blocks and bold markdown.... fuck bold markdown
+        if('`' in self.buffer):
+            #detected a code block delimiter
+            if('```' in self.buffer):
+                #toggle the codeBlock boolean and use that to disable
+                #other formatting for the time being
+                self.codeBlock = not self.codeBlock
+                
+                #if this is the beginning of a code block, change the text color
+                #and print a pretty line
+                if self.codeBlock:
+                    print(f"\n\033[92m", end="", flush=True)
+                    self.buffer = ""
+                    self.codeBlockEncountered = True
+                #if its the end of one print another pretty line and reset the terminal color
+                else:
+                    print('-' * self.terminalWidth, flush=True)
+                    self.buffer = ""
+                    print(f"\033[0m", flush=True)                
+
+            #handles `bold` markdown elements
+            elif(self.buffer.count('`') == 2
+                 and '``' not in self.buffer):
+                #replace the opening delimeter with the color code
+                self.buffer = self.buffer.replace('`', f"\033[93m", 1)
+                #replace the closing delimeter with the reset code
+                self.buffer = self.buffer.replace('`', f"\033[0m")
+
+                print(self.buffer, end="", flush=True)
+                self.buffer = ""
+
+        #handle markdown headers
+        elif('###' in self.buffer and not self.codeBlock):
+            print(f"\n\n\033[94m", end="", flush=True)
+            self.buffer = ""
+        elif('##' in self.buffer and not self.codeBlock):
+            print(f"\n\n\033[95m", end="", flush=True)
+            self.buffer = ""
+        elif('#' in self.buffer and not self.codeBlock):
+            print(f"\n\n\033[96m", end="", flush=True)
+            self.buffer = ""
+
+        #reset terminal color to default after rendering a markdown header   
+        elif('\n' in self.buffer and not self.codeBlock):
+            print(f"\033[0m" + self.buffer, end="", flush=True)
+            self.buffer = ""
+        
+        elif('\n' in self.buffer and self.codeBlockEncountered):
+            print(self.buffer + ('-' * self.terminalWidth), flush=True)
+            self.codeBlockEncountered = False
+            self.buffer = ""
+        
+        #handle all normal text
+        else:
+            print(self.buffer, end="", flush=True)
+            self.buffer = "" 
+    
+    @override
+    def on_text_delta(self, delta, snapshot):
+        self.buffer += delta.value
+        self.processBuffer()
+
+    def on_tool_call_created(self, tool_call):
+        print(f"\nassistant > {tool_call.type}\n", flush=True)
+
+    def on_tool_call_delta(self, delta, snapshot):
+        if delta.type == 'code_interpreter':
+            if delta.code_interpreter.input:
+                print(f"\033[94m" + delta.code_interpreter.input, end="", flush=True)
+            if delta.code_interpreter.outputs:
+                print(f"\033[0m\n\noutput >", flush=True)
+                for output in delta.code_interpreter.outputs:
+                    if output.type == "logs":
+                        print(f"\n{output.logs}", flush=True)
+
+import xml.etree.ElementTree as ET
+
+#the file 'mapping.xml' contains a shitton of unicode mappings including latex
+#this function returns a dictionary of latex/unicode pairs in the format '\\Sigma': 'Σ'
+def parseLatexMappings(inFile):
+    tree = ET.parse(inFile)
+    root = tree.getroot()
+    texUnicode = {}
+
+    for character in root.findall(".//character"):
+        tex = character.find(".//latex")
+        dec = character.get('dec')
+        if tex is not None and dec is not None:
+            try:
+                unicodeChar = chr(int(dec))
+                #maps the latex cmd (like \Sum) to its corresponding unicode char
+                texUnicode[tex.text.strip()] = unicodeChar
+            except ValueError:
+                continue
+    return texUnicode
 
 #sends the thread in its current state to the LLM
 #and prints/streams the response neatly in real time
@@ -74,11 +170,18 @@ def executeRun():
     stream.until_done()
     print('\n')
 
+#define strings that will quit
+quitStrs = ['exit', 'quit']
+
 #if no cmd line arguments are passed in, infinite loop getting input from the user
 #and evaluating it
 if len(sys.argv) == 1:
+   userIn = ''
    while True:
-      addMessage(input("\nask away: "))
+      userIn = input("ask away: ")
+      if(userIn.lower() in quitStrs):
+          exit(0)
+      addMessage(userIn)
       executeRun()
 #also accepts a singular string argument that gets evaluated by the LLM
 #and then exits
