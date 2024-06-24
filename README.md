@@ -1,6 +1,6 @@
 # termBuddy
 
-GPT wrappers in bash are fun and ChatGPT no longer tickles my wickle
+This is currently a personal playground for messing around with agents in the shell but one day it may be a product?
 
 `OPENAI_API_KEY` and `OPENAI_ASSISTANT_KEY` env variables must be set before using this
 
