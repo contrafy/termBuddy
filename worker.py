@@ -81,7 +81,7 @@ class EventHandler(AssistantEventHandler):
 
                 #if its the end of one print another pretty line and reset the terminal color
                 else:
-                    print('-' * self.terminalWidth, flush=True)
+                    print('\n' + ('-' * self.terminalWidth), flush=True)
                     self.buffer = ""
                     print(f"\033[0m", flush=True)                
 
@@ -115,7 +115,7 @@ class EventHandler(AssistantEventHandler):
         #this is solely to make sure the language of the code block is
         #printed above the code block instead of inside it, in the same color 
         elif('\n' in self.buffer and self.codeBlockEncountered):
-            print(self.buffer + ('-' * self.terminalWidth), flush=True)
+            print(self.buffer + ('-' * self.terminalWidth) + '\n', flush=True)
             self.codeBlockEncountered = False
             self.buffer = ""
         
