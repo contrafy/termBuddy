@@ -7,18 +7,24 @@ client = OpenAI()
 
 #file to hold the threadID of the current machines thread
 session_file = os.path.expanduser('~/.codeHelperSession')
+
+#appends messages as they come in to the log file
+def appendToHelperFile(text):
+    with open(session_file, 'a') as f:
+        f.write(text)
+
 #if no thread exists for this machine, create it and add the threadID to a file
 #so that it can be retrieved in future sessions
 if not os.path.exists(session_file):
     thread = client.beta.threads.create()
 
     with open(session_file, 'w') as f:
-        f.write(thread.id)
+        f.write(thread.id + '\n')
 
 #if the file exists, read the ID and use that to retrieve the thread
 else:
     with open(session_file) as f:
-        session_id = f.read().strip()
+        session_id = f.readline().strip()
     thread = client.beta.threads.retrieve(thread_id=session_id)
 
 
@@ -31,11 +37,11 @@ asstID = os.getenv("OPENAI_ASSISTANT_ID")
 #adds a message to the thread but does not execute the run
 #(executing a run sends the whole thread to the assistant and returns output)
 def addMessage(msg):
-   message = client.beta.threads.messages.create(
-    thread_id=thread.id,
-    role="user",
-    content=msg
-  )
+    message = client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=msg
+            )
 
 
 #OpenAI Streaming SDK to handle model output in real time
@@ -55,13 +61,29 @@ class EventHandler(AssistantEventHandler):
     @override
     def on_text_created(self, text) -> None:
         print(f"\n\033[0massistant > ", end="", flush=True)
+        appendToHelperFile("\n\nassistant > ")
 
     #just a final check to make sure everything gets output
     @override
     def on_text_done(self, text):
         print(self.buffer, end="", flush=True)
+        appendToHelperFile(self.buffer)
+
         print(f"\033[0m", end="", flush=True)
 
+
+    #prints a pretty line before and after code blocks
+    def printPrettyLine(self):
+        print('-' * self.terminalWidth, end="", flush=True)
+        appendToHelperFile('-' * self.terminalWidth)
+
+    #sends buffer to stdout, appends it to the helper file and flushes buffer
+    def clearBuffer(self):
+        print(self.buffer, end="", flush=True)
+        appendToHelperFile(self.buffer)
+        self.buffer = ""
+
+    #output is placed into an intermediate buffer before being output to process text rendering like markdown
     def processBuffer(self):
         #handle code blocks and bold markdown.... fuck bold markdown
         if('`' in self.buffer):
@@ -70,24 +92,33 @@ class EventHandler(AssistantEventHandler):
                 #toggle the codeBlock boolean and use that to disable
                 #other formatting for the time being
                 self.codeBlock = not self.codeBlock
-                
+
                 #if this is the beginning of a code block, change the text color
                 #but wait until the newline to print the pretty line
                 if self.codeBlock:
                     print(f"\n\033[92m", end="", flush=True)
+
+                    #don't actually print the ```
                     self.buffer = ""
 
                     self.codeBlockEncountered = True
 
                 #if its the end of one print another pretty line and reset the terminal color
                 else:
-                    print('\n' + ('-' * self.terminalWidth), flush=True)
+                    print()
+                    appendToHelperFile('\n')
+                    self.printPrettyLine()
+                    print()
+                    appendToHelperFile('\n')
+                    #print('\n' + ('-' * self.terminalWidth), flush=True)
                     self.buffer = ""
                     print(f"\033[0m", flush=True)                
 
             #handles `bold` markdown elements
-            elif(self.buffer.count('`') == 2
-                 and '``' not in self.buffer):
+            elif(self.buffer.count('`') == 2 and '``' not in self.buffer):
+                #append it to the file before applying the styles
+                appendToHelperFile(self.buffer)
+
                 #replace the opening delimeter with the color code
                 self.buffer = self.buffer.replace('`', f"\033[93m", 1)
                 #replace the closing delimeter with the reset code
@@ -99,30 +130,37 @@ class EventHandler(AssistantEventHandler):
         #handle markdown headers
         elif('###' in self.buffer and not self.codeBlock):
             print(f"\n\n\033[94m", end="", flush=True)
+            appendToHelperFile(self.buffer)
             self.buffer = ""
         elif('##' in self.buffer and not self.codeBlock):
             print(f"\n\n\033[95m", end="", flush=True)
+            appendToHelperFile(self.buffer)
             self.buffer = ""
         elif('#' in self.buffer and not self.codeBlock):
             print(f"\n\n\033[96m", end="", flush=True)
+            appendToHelperFile(self.buffer)
             self.buffer = ""
 
         #reset terminal color to default   
         elif('\n' in self.buffer and not self.codeBlock):
             print(f"\033[0m" + self.buffer, end="", flush=True)
+            appendToHelperFile(self.buffer)
             self.buffer = ""
 
         #this is solely to make sure the language of the code block is
         #printed above the code block instead of inside it, in the same color 
         elif('\n' in self.buffer and self.codeBlockEncountered):
-            print(self.buffer + ('-' * self.terminalWidth) + '\n', flush=True)
+            self.clearBuffer()
+            appendToHelperFile(self.buffer)
+            self.printPrettyLine()
+            print('\n')
+            #print(self.buffer + ('-' * self.terminalWidth) + '\n', flush=True)
             self.codeBlockEncountered = False
-            self.buffer = ""
-        
+            #self.buffer = ""
+
         #handle all normal text
         else:
-            print(self.buffer, end="", flush=True)
-            self.buffer = "" 
+            self.clearBuffer()
 
     #as response text is received, add to buffer and processBuffer() will
     #handle formatting accordingly 
@@ -168,12 +206,12 @@ def parseLatexMappings(inFile):
 #sends the thread in its current state to the LLM
 #and prints/streams the response neatly in real time
 def executeRun():
-  with client.beta.threads.runs.stream(
-    thread_id=thread.id,
-    assistant_id=os.getenv("OPENAI_ASSISTANT_KEY"),
-    event_handler=EventHandler(),
-  ) as stream:
-    stream.until_done()
+    with client.beta.threads.runs.stream(
+            thread_id=thread.id,
+            assistant_id=os.getenv("OPENAI_ASSISTANT_KEY"),
+            event_handler=EventHandler(),
+            ) as stream:
+        stream.until_done()
     print('\n')
 
 #define strings that will quit
@@ -182,15 +220,15 @@ quitStrs = ['exit', 'quit']
 #if no cmd line arguments are passed in, infinite loop getting input from the user
 #and evaluating it
 if len(sys.argv) == 1:
-   userIn = ''
-   while True:
-      userIn = input("ask away: ")
-      if(userIn.lower() in quitStrs):
-          exit(0)
-      addMessage(userIn)
-      executeRun()
+    userIn = ''
+    while True:
+       userIn = input("ask away: ")
+       if(userIn.lower() in quitStrs):
+           exit(0)
+       addMessage(userIn)
+       executeRun()
 #also accepts a singular string argument that gets evaluated by the LLM
 #and then exits
 else:
-  addMessage(sys.argv[1])
-  executeRun()
+    addMessage(sys.argv[1])
+    executeRun()
