@@ -217,12 +217,14 @@ def executeRun():
 #define strings that will quit
 quitStrs = ['exit', 'quit']
 
+from prompt_toolkit import prompt
+
 #if no cmd line arguments are passed in, infinite loop getting input from the user
 #and evaluating it
 if len(sys.argv) == 1:
     userIn = ''
     while True:
-       userIn = input("ask away: ")
+       userIn = prompt("ask away: ")
        if(userIn.lower() in quitStrs):
            exit(0)
        addMessage(userIn)
