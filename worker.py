@@ -50,6 +50,8 @@ class EventHandler(AssistantEventHandler):
         super().__init__()
         self.codeBlock = False
         self.codeBlockEncountered = False
+        self.isBold = False
+        self.isUnderline = False
 
         #use this buffer to detect markdown since delimiters can be
         #split between deltas
@@ -83,7 +85,7 @@ class EventHandler(AssistantEventHandler):
         appendToHelperFile(self.buffer)
         self.buffer = ""
 
-    #output is placed into an intermediate buffer before being output to process text rendering like markdown
+    #output is placed into an intermediate buffer before being output to process text rendering like markdown and code blocks
     def processBuffer(self):
         #handle code blocks and bold markdown.... fuck bold markdown
         if('`' in self.buffer):
@@ -114,7 +116,7 @@ class EventHandler(AssistantEventHandler):
                     self.buffer = ""
                     print(f"\033[0m", flush=True)                
 
-            #handles `bold` markdown elements
+            #handles `inline` code blocks
             elif(self.buffer.count('`') == 2 and '``' not in self.buffer):
                 #append it to the file before applying the styles
                 appendToHelperFile(self.buffer)
@@ -140,6 +142,25 @@ class EventHandler(AssistantEventHandler):
             print(f"\n\n\033[96m", end="", flush=True)
             appendToHelperFile(self.buffer)
             self.buffer = ""
+
+        #handle bold and italic (underline)
+        elif('*' in self.buffer):
+            if(self.buffer.count('**') == 2 and self.buffer.count('*') % 2 == 0):
+                appendToHelperFile(self.buffer)
+                self.buffer = self.buffer.replace('**', f"\033[1m", 1)
+                self.buffer = self.buffer.replace('**', f"\033[0m")
+
+                #in case of nested bold and italic elements
+                if(self.buffer.count('*') == 0):
+                    print(self.buffer, end="", flush=True)
+                    self.buffer = ""
+            elif(self.buffer.count('*') == 2 and '**' not in self.buffer):
+                appendToHelperFile(self.buffer)
+                self.buffer = self.buffer.replace('*', f"\033[4m", 1)
+                self.buffer = self.buffer.replace('*', f"\033[0m") 
+                if(self.buffer.count('*') == 0):
+                    print(self.buffer, end="", flush=True)
+                    self.buffer = ""
 
         #reset terminal color to default   
         elif('\n' in self.buffer and not self.codeBlock):
