@@ -11,10 +11,15 @@ session_file = os.path.expanduser('~/.codeHelperSession')
 vectorStore = client.beta.vector_stores.retrieve(vector_store_id="vs_VYKgsv07Be311LWb0CuLnSzn")
 
 def addFileToVectorStore(path):
-    print(client.files.create(
+    file = client.files.create(
         file=open(path, "rb"),
         purpose="assistants"
-    ))
+    )
+    vectorStoreFile = client.beta.vector_stores.files.create(
+        vector_store_id="vs_VYKgsv07Be311LWb0CuLnSzn",
+        file_id=file.id
+    )
+    print(vectorStoreFile)
 
 def getOAIassistants():
     my_assistants = client.beta.assistants.list(
