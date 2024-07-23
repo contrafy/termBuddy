@@ -8,6 +8,31 @@ client = OpenAI()
 #file to hold the threadID of the current machines thread
 session_file = os.path.expanduser('~/.codeHelperSession')
 
+vectorStore = client.beta.vector_stores.retrieve(vector_store_id="vs_VYKgsv07Be311LWb0CuLnSzn")
+
+def addFileToVectorStore(path):
+    print(client.files.create(
+        file=open(path, "rb"),
+        purpose="assistants"
+    ))
+
+def getOAIassistants():
+    my_assistants = client.beta.assistants.list(
+        order="desc",
+        limit="20",
+    )
+    print(my_assistants.data)
+
+
+def executeRun():
+    with client.beta.threads.runs.stream(
+            thread_id=thread.id,
+            assistant_id=os.getenv("OPENAI_ASSISTANT_KEY"),
+            event_handler=EventHandler(),
+            ) as stream:
+        stream.until_done()
+    print('\n')
+
 #appends messages as they come in to the log file
 def appendToHelperFile(text):
     with open(session_file, 'a') as f:
@@ -26,7 +51,6 @@ else:
     with open(session_file) as f:
         session_id = f.readline().strip()
     thread = client.beta.threads.retrieve(thread_id=session_id)
-
 
 print("\nThread ID: " + thread.id)
 
@@ -50,8 +74,6 @@ class EventHandler(AssistantEventHandler):
         super().__init__()
         self.codeBlock = False
         self.codeBlockEncountered = False
-        self.isBold = False
-        self.isUnderline = False
 
         #use this buffer to detect markdown since delimiters can be
         #split between deltas
@@ -62,8 +84,8 @@ class EventHandler(AssistantEventHandler):
 
     @override
     def on_text_created(self, text) -> None:
-        print(f"\n\033[0massistant > ", end="", flush=True)
-        appendToHelperFile("\n\nassistant > ")
+        print(f"\n\033[0mgpt-4o-mini > ", end="", flush=True)
+        appendToHelperFile("\n\ngpt-4o-mini > ")
 
     #just a final check to make sure everything gets output
     @override
@@ -87,47 +109,46 @@ class EventHandler(AssistantEventHandler):
 
     #output is placed into an intermediate buffer before being output to process text rendering like markdown and code blocks
     def processBuffer(self):
-        #handle code blocks and bold markdown.... fuck bold markdown
-        if('`' in self.buffer):
-            #detected a code block delimiter
-            if('```' in self.buffer):
-                #toggle the codeBlock boolean and use that to disable
-                #other formatting for the time being
-                self.codeBlock = not self.codeBlock
+        #handle code blocks and bold markdown.... fuck bold markdown if('`' in self.buffer):
+        #detected a code block delimiter
+        if('```' in self.buffer):
+            #toggle the codeBlock boolean and use that to disable
+            #other formatting for the time being
+            self.codeBlock = not self.codeBlock
 
-                #if this is the beginning of a code block, change the text color
-                #but wait until the newline to print the pretty line
-                if self.codeBlock:
-                    print(f"\n\033[92m", end="", flush=True)
+            #if this is the beginning of a code block, change the text color
+            #but wait until the newline to print the pretty line
+            if self.codeBlock:
+                print(f"\n\033[92m", end="", flush=True)
 
-                    #don't actually print the ```
-                    self.buffer = ""
-
-                    self.codeBlockEncountered = True
-
-                #if its the end of one print another pretty line and reset the terminal color
-                else:
-                    print()
-                    appendToHelperFile('\n')
-                    self.printPrettyLine()
-                    print()
-                    appendToHelperFile('\n')
-                    #print('\n' + ('-' * self.terminalWidth), flush=True)
-                    self.buffer = ""
-                    print(f"\033[0m", flush=True)                
-
-            #handles `inline` code blocks
-            elif(self.buffer.count('`') == 2 and '``' not in self.buffer):
-                #append it to the file before applying the styles
-                appendToHelperFile(self.buffer)
-
-                #replace the opening delimeter with the color code
-                self.buffer = self.buffer.replace('`', f"\033[93m", 1)
-                #replace the closing delimeter with the reset code
-                self.buffer = self.buffer.replace('`', f"\033[0m")
-
-                print(self.buffer, end="", flush=True)
+                #don't actually print the ```
                 self.buffer = ""
+
+                self.codeBlockEncountered = True
+
+            #if its the end of one print another pretty line and reset the terminal color
+            else:
+                print()
+                appendToHelperFile('\n')
+                self.printPrettyLine()
+                print()
+                appendToHelperFile('\n')
+                #print('\n' + ('-' * self.terminalWidth), flush=True)
+                self.buffer = ""
+                print(f"\033[0m", flush=True)                
+
+        #handles `inline` code blocks
+        elif(self.buffer.count('`') == 2 and '``' not in self.buffer):
+            #append it to the file before applying the styles
+            appendToHelperFile(self.buffer)
+
+            #replace the opening delimeter with the color code
+            self.buffer = self.buffer.replace('`', f"\033[93m", 1)
+            #replace the closing delimeter with the reset code
+            self.buffer = self.buffer.replace('`', f"\033[0m")
+
+            print(self.buffer, end="", flush=True)
+            self.buffer = ""
 
         #handle markdown headers
         elif('###' in self.buffer and not self.codeBlock):
@@ -175,9 +196,7 @@ class EventHandler(AssistantEventHandler):
             appendToHelperFile(self.buffer)
             self.printPrettyLine()
             print('\n')
-            #print(self.buffer + ('-' * self.terminalWidth) + '\n', flush=True)
             self.codeBlockEncountered = False
-            #self.buffer = ""
 
         #handle all normal text
         else:
@@ -226,14 +245,6 @@ def parseLatexMappings(inFile):
 
 #sends the thread in its current state to the LLM
 #and prints/streams the response neatly in real time
-def executeRun():
-    with client.beta.threads.runs.stream(
-            thread_id=thread.id,
-            assistant_id=os.getenv("OPENAI_ASSISTANT_KEY"),
-            event_handler=EventHandler(),
-            ) as stream:
-        stream.until_done()
-    print('\n')
 
 #define strings that will quit
 quitStrs = ['exit', 'quit']
@@ -253,5 +264,4 @@ if len(sys.argv) == 1:
 #also accepts a singular string argument that gets evaluated by the LLM
 #and then exits
 else:
-    addMessage(sys.argv[1])
-    executeRun()
+    addFileToVectorStore("worker.py")
