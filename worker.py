@@ -7,16 +7,20 @@ client = OpenAI()
 
 #file to hold the threadID of the current machines thread
 session_file = os.path.expanduser('~/.codeHelperSession')
-
-vectorStore = client.beta.vector_stores.retrieve(vector_store_id="vs_VYKgsv07Be311LWb0CuLnSzn")
+vsID = "vs_VYKgsv07Be311LWb0CuLnSzn"
+asstID="asst_k8YJma7hcowI6lh7xiVOvluX"
 
 def addFileToVectorStore(path):
+    client.beta.assistants.update(
+        assistant_id=asstID,
+        tool_resources={"file_search": {"vector_store_ids": [vsID]}}
+    )
     file = client.files.create(
         file=open(path, "rb"),
         purpose="assistants"
     )
     vectorStoreFile = client.beta.vector_stores.files.create(
-        vector_store_id="vs_VYKgsv07Be311LWb0CuLnSzn",
+        vector_store_id=vsID,
         file_id=file.id
     )
     print(vectorStoreFile)
@@ -32,7 +36,7 @@ def getOAIassistants():
 def executeRun():
     with client.beta.threads.runs.stream(
             thread_id=thread.id,
-            assistant_id=os.getenv("OPENAI_ASSISTANT_KEY"),
+            assistant_id=asstID,
             event_handler=EventHandler(),
             ) as stream:
         stream.until_done()
@@ -59,10 +63,6 @@ else:
 
 print("\nThread ID: " + thread.id)
 
-#potentially make a config file to create the assistant with custom settings
-#instead of forcefully using my assistant instance
-asstID = os.getenv("OPENAI_ASSISTANT_ID")
-
 #adds a message to the thread but does not execute the run
 #(executing a run sends the whole thread to the assistant and returns output)
 def addMessage(msg):
@@ -70,7 +70,7 @@ def addMessage(msg):
             thread_id=thread.id,
             role="user",
             content=msg
-            )
+    )
 
 
 #OpenAI Streaming SDK to handle model output in real time
@@ -259,6 +259,7 @@ from prompt_toolkit import prompt
 #if no cmd line arguments are passed in, infinite loop getting input from the user
 #and evaluating it
 if len(sys.argv) == 1:
+    addFileToVectorStore("worker.py")
     userIn = ''
     while True:
        userIn = prompt("ask away: ")
